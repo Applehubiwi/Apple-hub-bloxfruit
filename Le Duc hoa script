@@ -1,0 +1,270 @@
+--==================================================
+-- LOAD RAYFIELD
+--==================================================
+local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+
+local Window = Rayfield:CreateWindow({
+   Name = "Toha hub  [premium]",
+   LoadingTitle = "Toha hub",
+   LoadingSubtitle = "by nobody",
+   ConfigurationSaving = { Enabled = false },
+   KeySystem = false
+})
+
+--==================================================
+-- TABS
+--==================================================
+local CombatTab = Window:CreateTab("Combat", 4483362458)
+local ESPTab    = Window:CreateTab("ESP", 4483362458)
+
+--==================================================
+-- SERVICES
+--==================================================
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local Camera = workspace.CurrentCamera
+local LP = Players.LocalPlayer
+
+--==================================================
+-- AIMBOT CONFIG
+--==================================================
+local Aimbot = false
+local HoldAim = false
+local WallCheck = true
+local AimSpeed = 0.15
+local FOV = 150
+local TargetPart = "Head"
+
+--==================================================
+-- DRAWING CHECK (PC)
+--==================================================
+local hasDrawing = pcall(function()
+    return Drawing.new("Circle")
+end)
+
+local FOVCircle
+if hasDrawing then
+    FOVCircle = Drawing.new("Circle")
+    FOVCircle.Filled = false
+    FOVCircle.Thickness = 2
+    FOVCircle.NumSides = 100
+    FOVCircle.Color = Color3.fromRGB(255,255,255)
+end
+
+--==================================================
+-- VISIBILITY CHECK (ANTI WALL)
+--==================================================
+local function IsVisible(char)
+    if not char or not char:FindFirstChild(TargetPart) then return false end
+
+    local origin = Camera.CFrame.Position
+    local direction = (char[TargetPart].Position - origin)
+
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Blacklist
+    params.FilterDescendantsInstances = {
+        LP.Character,
+        Camera
+    }
+    params.IgnoreWater = true
+
+    local result = workspace:Raycast(origin, direction, params)
+    if result then
+        return result.Instance:IsDescendantOf(char)
+    end
+
+    return false
+end
+
+--==================================================
+-- CHARACTER READY
+--==================================================
+local function CharacterReady(plr)
+    return plr.Character
+        and plr.Character:FindFirstChild("Humanoid")
+        and plr.Character.Humanoid.Health > 0
+        and plr.Character:FindFirstChild(TargetPart)
+end
+
+--==================================================
+-- GET CLOSEST TARGET (CENTER SCREEN)
+--==================================================
+local function GetClosest()
+    local closest, dist = nil, FOV
+    local center = Camera.ViewportSize / 2
+
+    for _,plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LP and CharacterReady(plr) then
+            if not WallCheck or IsVisible(plr.Character) then
+                local pos, on = Camera:WorldToViewportPoint(plr.Character[TargetPart].Position)
+                if on then
+                    local mag = (Vector2.new(pos.X,pos.Y) - center).Magnitude
+                    if mag < dist then
+                        dist = mag
+                        closest = plr
+                    end
+                end
+            end
+        end
+    end
+    return closest
+end
+
+--==================================================
+-- AIMLOCK LOOP
+--==================================================
+RunService.RenderStepped:Connect(function()
+    if hasDrawing and FOVCircle then
+        local c = Camera.ViewportSize / 2
+        FOVCircle.Position = Vector2.new(c.X, c.Y)
+        FOVCircle.Radius = FOV
+        FOVCircle.Visible = Aimbot
+    end
+
+    if not Aimbot then return end
+    if HoldAim and not UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+        return
+    end
+
+    local target = GetClosest()
+    if target and target.Character then
+        Camera.CFrame = Camera.CFrame:Lerp(
+            CFrame.new(Camera.CFrame.Position, target.Character[TargetPart].Position),
+            AimSpeed
+        )
+    end
+end)
+
+--==================================================
+-- COMBAT UI
+--==================================================
+CombatTab:CreateToggle({
+   Name = "Aimlock",
+   CurrentValue = false,
+   Callback = function(v) Aimbot = v end
+})
+
+CombatTab:CreateToggle({
+   Name = "Hold Right Click",
+   CurrentValue = false,
+   Callback = function(v) HoldAim = v end
+})
+
+CombatTab:CreateToggle({
+   Name = "Wall Check (No Wallbang)",
+   CurrentValue = true,
+   Callback = function(v) WallCheck = v end
+})
+
+CombatTab:CreateDropdown({
+   Name = "Target Part",
+   Options = {"Head","HumanoidRootPart"},
+   CurrentOption = "Head",
+   Callback = function(v) TargetPart = v end
+})
+
+CombatTab:CreateSlider({
+   Name = "FOV Range",
+   Range = {50, 500},
+   Increment = 1,
+   CurrentValue = 150,
+   Callback = function(v) FOV = v end
+})
+
+CombatTab:CreateSlider({
+   Name = "Aim Speed",
+   Range = {0.05, 1},
+   Increment = 0.05,
+   CurrentValue = 0.15,
+   Callback = function(v) AimSpeed = v end
+})
+
+--==================================================
+-- ESP SYSTEM (LOOP)
+--==================================================
+local ESPEnabled = false
+local ESPObjects = {}
+
+local function ClearESP(plr)
+    if ESPObjects[plr] then
+        for _,obj in pairs(ESPObjects[plr]) do
+            if obj.Remove then obj:Remove() end
+        end
+        ESPObjects[plr] = nil
+    end
+end
+
+local function CreateESP(plr)
+    if not hasDrawing then return end
+    ClearESP(plr)
+
+    local name = Drawing.new("Text")
+    name.Size = 13
+    name.Center = true
+    name.Outline = true
+    name.Color = Color3.fromRGB(255,255,255)
+
+    ESPObjects[plr] = {name}
+end
+
+RunService.RenderStepped:Connect(function()
+    if not ESPEnabled or not hasDrawing then return end
+
+    for _,plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LP and plr.Character and plr.Character:FindFirstChild("Head") then
+            if not ESPObjects[plr] then
+                CreateESP(plr)
+            end
+
+            local pos, on = Camera:WorldToViewportPoint(plr.Character.Head.Position + Vector3.new(0,1,0))
+            if on then
+                local visible = IsVisible(plr.Character)
+                ESPObjects[plr][1].Text = plr.Name
+                ESPObjects[plr][1].Position = Vector2.new(pos.X, pos.Y)
+                ESPObjects[plr][1].Visible = true
+                ESPObjects[plr][1].Color = visible
+                    and Color3.fromRGB(0,255,0)
+                    or Color3.fromRGB(255,0,0)
+            else
+                ESPObjects[plr][1].Visible = false
+            end
+        else
+            ClearESP(plr)
+        end
+    end
+end)
+
+--==================================================
+-- ESP UI
+--==================================================
+ESPTab:CreateToggle({
+   Name = "ESP (Loop)",
+   CurrentValue = false,
+   Callback = function(v)
+      ESPEnabled = v
+      if not v then
+        for _,plr in pairs(ESPObjects) do
+            ClearESP(plr)
+        end
+      end
+   end
+})
+
+--==================================================
+-- TOGGLE UI (INSERT)
+--==================================================
+UIS.InputBegan:Connect(function(i, g)
+    if not g and i.KeyCode == Enum.KeyCode.Insert then
+        Rayfield:Toggle()
+    end
+end)
+
+--==================================================
+-- NOTIFY
+--==================================================
+Rayfield:Notify({
+   Title = "hubn't",
+   Content = "Aimlock + WallCheck + ESP Loaded ✅",
+   Duration = 3
+})
